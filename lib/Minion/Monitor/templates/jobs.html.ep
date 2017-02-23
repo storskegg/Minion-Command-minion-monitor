@@ -1,0 +1,116 @@
+% layout 'basic';
+
+%= stylesheet begin
+  a.job-link { cursor: pointer };
+% end
+
+<div class="ui page grid" id="app">
+
+  <div class="four wide column">
+    <div class="ui vertical menu">
+      % for my $state (qw/all active inactive finished failed/) {
+        % my $filter = $state eq 'all' ? '' : $state;
+        <a :class="{ 'item': true, 'active': filter === '<%= $state %>'}" @click="set_filter('<%= $filter %>')">
+          %= ucfirst $state
+          <div class="ui label">{{ stats.<%= $state %>_jobs }}</div>
+        </a>
+      % }
+    </div>
+
+    <div class="ui vertical menu">
+      <a class="item" @click="refresh">
+        <div class="ui two column grid">
+          <div class="column">Refresh</div>
+          <div class="right floated right aligned column">
+            <div id="refresh" :class="{ 'ui': true, 'mini': true, 'inline': true, 'loader': true, 'active': refreshing }"></div>
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="twelve wide column">
+    <table class="ui celled table">
+      <thead><tr>
+        % my @cols = qw/id task queue args state result priority retries/;
+        % for my $col (@cols) {
+          <th><%= $col %></th>
+        % }
+      </tr></thead>
+      <tbody>
+        <tr v-for="job in jobs">
+          % for my $col (@cols) {
+            <td>
+              % if ($col eq 'id') {
+                <a class="job-link" @click="show_job(job)">{{ job.id }}</a>
+              % } elsif ($col eq 'args') {
+                <pre>{{ job.args | json }}</pre>
+              % } else {
+                %= "{{ job.$col }}"
+              % }
+            </td>
+          % }
+        </tr>
+      </tbody>
+    </table>
+
+    <pager-widget :page.sync="page" :max="pages"></pager-widget>
+  </div>
+
+  <job-modal @updated="refresh"></job-modal>
+</div>
+
+%= javascript begin
+  var vm = new Vue({
+    el: '#app',
+    data: {
+      jobs: [],
+      page: 1,
+      page_limit: 100,
+      refreshing: false,
+      stats: {},
+    },
+    computed: {
+      pages: function () {
+        var f = this.filter || 'all';
+        var c = this.stats[f+'_jobs'];
+        return Math.ceil(c / this.page_limit);
+      },
+    },
+    methods: {
+      refresh: function() {
+        this.refreshing = true;
+        self = this;
+
+        var query = {
+          limit:  this.page_limit,
+          offset: this.page_limit * (this.page - 1),
+        };
+
+        if (this.filter) {
+          query.state = this.filter;
+        }
+
+        $.get("<%= url_for 'api_jobs' %>", query, function(data) {
+          self.jobs = data;
+          self.refreshing = false; //TODO time with stats call too.
+        });
+
+        $.get("<%= url_for 'api_stats' %>", function(data) {
+          data.all_jobs = parseInt(data.active_jobs) + parseInt(data.inactive_jobs) + parseInt(data.finished_jobs) + parseInt(data.failed_jobs);
+          self.stats = data;
+        });
+      },
+      set_filter: function(filter) {
+        this.filter = filter;
+        this.page = 1;
+        this.refresh();
+      },
+      show_job: function(job) {
+        this.$broadcast('show_job', job);
+      },
+    },
+    watch: { 'page': 'refresh' },
+    ready: function() { this.refresh() },
+  });
+% end

@@ -8,24 +8,17 @@ use File::Spec ();
 use constant DEBUG => $ENV{MINION_MONITOR_DEBUG};
 
 sub home {
-  require Minion::Command::minion::monitor;
-  my $home = $INC{'Minion/Command/minion/monitor.pm'};
+  my $home = $INC{'Minion/Monitor.pm'};
   $home =~ s/\.pm$//;
   $home = File::Spec->rel2abs($home);
   Mojo::Home->new($home);
 };
 
-has parent => sub {
-  require Mojo::Server;
-  my $parent = Mojo::Server->new->build_app('Mojo::HelloWorld');
-  $parent->plugin(Minion => {File => 'minion.db'});
-  return $parent;
-};
-
+has minion => sub { Minion->new({File => 'minion.db'}) };
 
 sub startup {
   my $app = shift;
-  $app->helper(minion => sub { shift->app->parent->minion });
+  $app->helper(minion => sub { shift->app->minion });
 
   my $r = $app->routes;
 
@@ -74,7 +67,7 @@ sub startup {
     }
 
     my $args = $input->{args} || [];
-    my @valid = qw/delay priority/;
+    my @valid = qw/delay priority queue/;
     my %options; @options{@valid} = @{$input}{@valid};
 
     my $job = $minion->enqueue($task, $args, \%options);
